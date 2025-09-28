@@ -1,0 +1,138 @@
+
+#!/usr/bin/env bash
+set -e
+
+REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
+# When installed to /usr/local/bin, resolve to repo path if symlink
+if [ -L "$0" ]; then
+  LINK_TARGET="$(readlink "$0" || true)"
+  [ -n "$LINK_TARGET" ] && REPO_DIR="$(cd "$(dirname "$LINK_TARGET")/.." && pwd)"
+else
+  # if executed from repo/scripts/donat directly
+  P="$(cd "$(dirname "$0")" && pwd)"
+  if [[ "$P" == */scripts ]]; then
+    REPO_DIR="$(cd "$P/.." && pwd)"
+  fi
+fi
+
+APP_DIR="$REPO_DIR/app"
+PM2_NAME="donutbot"
+PM2_BIN="$(command -v pm2 || true)"
+NODE_BIN="$(command -v node || true)"
+NPM_BIN="$(command -v npm || true)"
+SUDO="$(command -v sudo || true)"
+
+function line(){ printf "%*s\n" "$(tput cols 2>/dev/null || echo 60)" | tr ' ' '─'; }
+function header(){
+  line
+  echo "🍩 DonutBot CLI — $(date '+%Y-%m-%d %H:%M:%S')"
+  echo "Repo: $REPO_DIR"
+  line
+}
+
+function set_admin(){
+  read -rp "Masukkan nomor admin (format 62812XXXXXXX): " NUM
+  if [[ -z "$NUM" ]]; then echo "Batal."; return; fi
+  JID="${NUM}@s.whatsapp.net"
+  FILE="$APP_DIR/settings.js"
+  if ! grep -q "admins:" "$FILE"; then
+    echo "File settings.js tidak sesuai. Pastikan file ada di $FILE"
+    return
+  fi
+  # Replace admins array in place
+  $SUDO sed -i -E "s/admins:\s*\[[^]]*\]/admins: [\"$JID\"]/g" "$FILE"
+  echo "✅ Admin di-set: $JID"
+}
+
+function scan_qr(){
+  echo "⛔ Menyetop PM2 sementara (jika ada)..."
+  [ -n "$PM2_BIN" ] && $SUDO "$PM2_BIN" stop "$PM2_NAME" || true
+  echo "▶️ Menjalankan bot langsung agar QR tampil (Ctrl+C untuk berhenti)"
+  cd "$APP_DIR"
+  "$NODE_BIN" index.js || true
+  echo "🔁 Menyalakan kembali PM2..."
+  [ -n "$PM2_BIN" ] && $SUDO "$PM2_BIN" start "$PM2_NAME" || true
+}
+
+function restart_bot(){
+  if [ -n "$PM2_BIN" ]; then
+    $SUDO "$PM2_BIN" restart "$PM2_NAME" || $SUDO "$PM2_BIN" start index.js --name "$PM2_NAME"
+  else
+    echo "PM2 tidak ditemukan. Menjalankan node index.js di background..."
+    cd "$APP_DIR"; nohup "$NODE_BIN" index.js >/tmp/donutbot.log 2>&1 &
+  fi
+  echo "✅ Restart OK"
+}
+
+function status_bot(){
+  if [ -n "$PM2_BIN" ]; then
+    "$PM2_BIN" status "$PM2_NAME" || echo "App belum berjalan di PM2."
+  else
+    echo "PM2 tidak terpasang."
+  fi
+}
+
+function logs_bot(){
+  if [ -n "$PM2_BIN" ]; then
+    "$PM2_BIN" logs "$PM2_NAME"
+  else
+    echo "PM2 tidak terpasang."
+  fi
+}
+
+function update_repo(){
+  if [ -d "$REPO_DIR/.git" ]; then
+    (cd "$REPO_DIR" && $SUDO -E -u "$USER" git pull --rebase) || echo "git pull gagal/zip install."
+  else
+    echo "Repo tidak ada .git (instalasi dari ZIP). Jalankan: sudo bash scripts/update.sh"
+  fi
+  (cd "$APP_DIR" && $SUDO "$NPM_BIN" install)
+  restart_bot
+}
+
+function uninstall_repo(){
+  read -rp "Yakin uninstall bot? [y/N]: " YN
+  [[ "$YN" =~ ^[Yy]$ ]] || { echo "Batal."; return; }
+  if [ -n "$PM2_BIN" ]; then
+    $SUDO "$PM2_BIN" delete "$PM2_NAME" || true
+    $SUDO "$PM2_BIN" save || true
+  fi
+  echo "Repo tidak dihapus otomatis. Hapus manual kalau ingin:"
+  echo "  sudo rm -rf \"$REPO_DIR\""
+}
+
+function set_coords(){
+  read -rp "Latitude toko (mis: -6.2): " LAT
+  read -rp "Longitude toko (mis: 106.816): " LON
+  [ -z "$LAT" -o -z "$LON" ] && { echo "Batal."; return; }
+  FILE="$APP_DIR/catalog.js"
+  $SUDO sed -i -E "s/storeCoords:\s*\{[^}]*\}/storeCoords: { lat: ${LAT}, lon: ${LON} }/g" "$FILE"
+  echo "✅ Koordinat diset: lat=${LAT}, lon=${LON}"
+}
+
+while true; do
+  header
+  echo "1) Masukkan Nomor Admin"
+  echo "2) Scan Nomor Bot (QR)"
+  echo "3) Restart Bot"
+  echo "4) Status Bot"
+  echo "5) Logs Bot"
+  echo "6) Update dari Git"
+  echo "7) Uninstall Bot"
+  echo "8) Edit Koordinat Toko"
+  echo "9) Keluar"
+  read -rp "Pilih [1-9]: " CH
+  case "$CH" in
+    1) set_admin ;;
+    2) scan_qr ;;
+    3) restart_bot ;;
+    4) status_bot ;;
+    5) logs_bot ;;
+    6) update_repo ;;
+    7) uninstall_repo ;;
+    8) set_coords ;;
+    9) exit 0 ;;
+    *) echo "Pilihan tidak valid." ;;
+  esac
+  read -rp "Tekan Enter untuk kembali ke menu..." _
+done

@@ -1,0 +1,19 @@
+{
+  "name": "whatsapp-donut-bot-plus",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "NODE_ENV=development node index.js"
+  },
+  "dependencies": {
+    "@adiwajshing/baileys": "^6.7.4",
+    "axios": "^1.6.2",
+    "express": "^4.18.3",
+    "lowdb": "^6.0.1",
+    "nanoid": "^4.0.2",
+    "pino": "^8.15.0",
+    "qrcode": "^1.5.1"
+  }
+}
