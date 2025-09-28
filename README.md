@@ -32,8 +32,8 @@ scripts/              # Installer & CLI
 ## Quick Start (Git)
 ```bash
 # 1) Clone
-git clone https://github.com/USER/donut-bot-wa.git
-cd donut-bot-wa
+git clone https://github.com/disiliti/donat.git
+cd donat
 
 # 2) Install (Ubuntu/Debian)
 sudo bash scripts/install.sh
